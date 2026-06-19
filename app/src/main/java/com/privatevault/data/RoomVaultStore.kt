@@ -55,6 +55,10 @@ class RoomVaultStore(private val dao: VaultDao) : VaultStore {
 
     // ── Movie update operations ──
 
+    override suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long) {
+        dao.updateMovieTitle(movieId = movieId, title = title, updatedAt = updatedAt)
+    }
+
     override suspend fun updateMovieNotes(movieId: String, notes: String, updatedAt: Long) {
         dao.updateMovieNotes(movieId = movieId, notes = notes, updatedAt = updatedAt)
     }

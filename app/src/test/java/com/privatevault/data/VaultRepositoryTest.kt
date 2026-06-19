@@ -77,6 +77,29 @@ class VaultRepositoryTest {
         assertEquals("新影片", state.movies.single().title)
         assertEquals(listOf("movie-uuid"), state.libraries.single().movieIds)
     }
+
+    @Test
+    fun updateMovieTitleTrimsInputAndIgnoresBlankTitles() = runTest {
+        val store = FakeVaultStore(
+            VaultSnapshot(
+                libraries = listOf(LibraryEntity("library-main", "片库", 0, 1L, 1L)),
+                movies = listOf(
+                    MovieEntity("movie-1", "library-main", "旧标题", "", false, 0L, 1L, 1L)
+                ),
+                images = emptyList(),
+                links = emptyList(),
+                tags = emptyList(),
+                movieTags = emptyList()
+            )
+        )
+        val repository = VaultRepository(store)
+
+        repository.updateMovieTitle(movieId = "movie-1", title = " 新标题 ")
+        repository.updateMovieTitle(movieId = "movie-1", title = "   ")
+        val state = repository.state.first()
+
+        assertEquals("新标题", state.movies.single().title)
+    }
 }
 
 private fun sequenceIds(vararg ids: String): () -> String {
@@ -102,6 +125,14 @@ private class FakeVaultStore(initialSnapshot: VaultSnapshot) : VaultStore {
 
     override suspend fun insertMovieImage(image: MovieImageEntity) {
         snapshots.value = snapshots.value.copy(images = snapshots.value.images + image)
+    }
+
+    override suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long) {
+        snapshots.value = snapshots.value.copy(
+            movies = snapshots.value.movies.map { movie ->
+                if (movie.id == movieId) movie.copy(title = title, updatedAt = updatedAt) else movie
+            }
+        )
     }
 
     override suspend fun updateMovieNotes(movieId: String, notes: String, updatedAt: Long) = Unit

@@ -43,6 +43,9 @@ interface VaultDao {
 
     // ── Movie update operations ──
 
+    @Query("UPDATE movies SET title = :title, updated_at = :updatedAt WHERE id = :movieId")
+    suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long)
+
     @Query("UPDATE movies SET notes = :notes, updated_at = :updatedAt WHERE id = :movieId")
     suspend fun updateMovieNotes(movieId: String, notes: String, updatedAt: Long)
 

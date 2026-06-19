@@ -4,6 +4,7 @@ package com.privatevault.ui
 
 import android.app.Activity
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -66,7 +68,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -137,6 +141,7 @@ fun PrivateVaultApp(repository: VaultRepository) {
                 onOpenMovie = { navigate(state.openMovie(it)) },
                 onStageImages = viewModel::stageImageSelection,
                 onImagesImported = viewModel::addMovieImages,
+                onUpdateMovieTitle = viewModel::updateMovieTitle,
                 onUpdateMovieNotes = viewModel::updateMovieNotes,
                 onToggleFavorite = viewModel::toggleFavorite,
                 onAddLink = viewModel::addLink,
@@ -208,6 +213,7 @@ private fun VaultScaffold(
     onOpenMovie: (String) -> Unit,
     onStageImages: (Int, ImportMode) -> Unit,
     onImagesImported: (String, List<ImportedVaultMedia>, ImportMode, Boolean) -> Unit,
+    onUpdateMovieTitle: (String, String) -> Unit,
     onUpdateMovieNotes: (String, String) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onAddLink: (String, String, LinkType) -> Unit,
@@ -261,6 +267,7 @@ private fun VaultScaffold(
                     pendingImportMode = state.pendingImportMode,
                     onStageImages = onStageImages,
                     onImagesImported = onImagesImported,
+                    onUpdateTitle = onUpdateMovieTitle,
                     onUpdateNotes = onUpdateMovieNotes,
                     onToggleFavorite = onToggleFavorite,
                     onAddLink = onAddLink,
@@ -573,6 +580,7 @@ private fun MovieDetailScreen(
     pendingImportMode: ImportMode?,
     onStageImages: (Int, ImportMode) -> Unit,
     onImagesImported: (String, List<ImportedVaultMedia>, ImportMode, Boolean) -> Unit,
+    onUpdateTitle: (String, String) -> Unit,
     onUpdateNotes: (String, String) -> Unit,
     onToggleFavorite: (String) -> Unit,
     onAddLink: (String, String, LinkType) -> Unit,
@@ -591,6 +599,7 @@ private fun MovieDetailScreen(
     val movieTags = tags.filter { it.id in movie.tagIds }
     val availableTags = tags.filter { it.id !in movie.tagIds }
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val importer = remember(context) { PrivateMediaImporter(context) }
     val removalGateway = remember(context) { MediaStoreOriginalRemovalGateway(context) }
@@ -600,6 +609,8 @@ private fun MovieDetailScreen(
     var importErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // ── Editable state ──
+    var editingTitle by remember(movie.id) { mutableStateOf(false) }
+    var draftTitle by remember(movie.id, movie.title) { mutableStateOf(movie.title) }
     var editingNotes by remember(movie.id) { mutableStateOf(false) }
     var draftNotes by remember(movie.id, movie.notes) { mutableStateOf(movie.notes) }
     var showAddLinkDialog by remember { mutableStateOf(false) }
@@ -660,35 +671,77 @@ private fun MovieDetailScreen(
         }
     }
 
+    fun copyToClipboard(label: String, value: String) {
+        val text = value.trim()
+        if (text.isEmpty()) return
+        clipboardManager.setText(AnnotatedString(text))
+        Toast.makeText(context, "$label 已复制", Toast.LENGTH_SHORT).show()
+    }
+
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // ── Title + Favorite ──
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = movie.title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f)
-                )
-                IconButton(onClick = { onToggleFavorite(movie.id) }) {
-                    Icon(
-                        imageVector = if (movie.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                        contentDescription = if (movie.isFavorite) "取消收藏" else "加入收藏",
-                        tint = if (movie.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (editingTitle) {
+                        OutlinedTextField(
+                            value = draftTitle,
+                            onValueChange = { draftTitle = it },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = {
+                            val trimmedTitle = draftTitle.trim()
+                            if (trimmedTitle.isNotEmpty()) {
+                                onUpdateTitle(movie.id, trimmedTitle)
+                                editingTitle = false
+                            }
+                        }) {
+                            Icon(imageVector = Icons.Default.Check, contentDescription = "保存标题")
+                        }
+                        IconButton(onClick = {
+                            draftTitle = movie.title
+                            editingTitle = false
+                        }) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "取消编辑标题")
+                        }
+                    } else {
+                        Text(
+                            text = movie.title,
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { copyToClipboard("标题", movie.title) }) {
+                            Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "复制标题")
+                        }
+                        IconButton(onClick = {
+                            draftTitle = movie.title
+                            editingTitle = true
+                        }) {
+                            Icon(imageVector = Icons.Default.Edit, contentDescription = "编辑标题")
+                        }
+                        IconButton(onClick = { onToggleFavorite(movie.id) }) {
+                            Icon(
+                                imageVector = if (movie.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = if (movie.isFavorite) "取消收藏" else "加入收藏",
+                                tint = if (movie.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                            )
+                        }
+                    }
                 }
+                Text(
+                    text = "封面图使用第一张详情图",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+                )
             }
-            Text(
-                text = "封面图使用第一张详情图",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
-            )
         }
 
         // ── Image summary + picker ──
@@ -726,18 +779,25 @@ private fun MovieDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(text = "备注", style = MaterialTheme.typography.titleMedium)
-                        IconButton(onClick = {
-                            if (editingNotes) {
-                                onUpdateNotes(movie.id, draftNotes)
-                            } else {
-                                draftNotes = movie.notes
+                        Row {
+                            if (!editingNotes && movie.notes.isNotBlank()) {
+                                IconButton(onClick = { copyToClipboard("备注", movie.notes) }) {
+                                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "复制备注")
+                                }
                             }
-                            editingNotes = !editingNotes
-                        }) {
-                            Icon(
-                                imageVector = if (editingNotes) Icons.Default.Check else Icons.Default.Edit,
-                                contentDescription = if (editingNotes) "保存备注" else "编辑备注"
-                            )
+                            IconButton(onClick = {
+                                if (editingNotes) {
+                                    onUpdateNotes(movie.id, draftNotes)
+                                } else {
+                                    draftNotes = movie.notes
+                                }
+                                editingNotes = !editingNotes
+                            }) {
+                                Icon(
+                                    imageVector = if (editingNotes) Icons.Default.Check else Icons.Default.Edit,
+                                    contentDescription = if (editingNotes) "保存备注" else "编辑备注"
+                                )
+                            }
                         }
                     }
                     if (editingNotes) {
@@ -803,6 +863,13 @@ private fun MovieDetailScreen(
                                         text = link.type.label(),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                IconButton(onClick = { copyToClipboard("链接", link.url) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "复制链接",
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                                 IconButton(onClick = { onDeleteLink(link.id) }) {

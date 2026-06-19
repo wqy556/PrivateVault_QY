@@ -91,6 +91,10 @@ class VaultViewModel(private val repository: VaultRepository) : ViewModel() {
         viewModelScope.launch { repository.addMovie(libraryId = libraryId, title = title) }
     }
 
+    fun updateMovieTitle(movieId: String, title: String) {
+        viewModelScope.launch { repository.updateMovieTitle(movieId = movieId, title = title) }
+    }
+
     fun updateMovieNotes(movieId: String, notes: String) {
         viewModelScope.launch { repository.updateMovieNotes(movieId = movieId, notes = notes) }
     }

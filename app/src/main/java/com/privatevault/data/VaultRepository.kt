@@ -90,6 +90,12 @@ class VaultRepository(
 
     // ── Movie update operations ──
 
+    suspend fun updateMovieTitle(movieId: String, title: String) {
+        val trimmedTitle = title.trim()
+        if (trimmedTitle.isEmpty()) return
+        store.updateMovieTitle(movieId = movieId, title = trimmedTitle, updatedAt = clock())
+    }
+
     suspend fun updateMovieNotes(movieId: String, notes: String) {
         store.updateMovieNotes(movieId = movieId, notes = notes.trim(), updatedAt = clock())
     }

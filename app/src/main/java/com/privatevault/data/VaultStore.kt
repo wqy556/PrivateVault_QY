@@ -17,6 +17,8 @@ interface VaultStore {
 
     // ── Movie update operations ──
 
+    suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long)
+
     suspend fun updateMovieNotes(movieId: String, notes: String, updatedAt: Long)
 
     suspend fun updateMovieFavorite(movieId: String, isFavorite: Boolean, updatedAt: Long)
