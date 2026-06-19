@@ -44,6 +44,9 @@ interface VaultDao {
     @Query("DELETE FROM movie_images WHERE id = :imageId")
     suspend fun deleteMovieImage(imageId: String)
 
+    @Query("DELETE FROM movies WHERE id = :movieId")
+    suspend fun deleteMovie(movieId: String)
+
     // ── Movie update operations ──
 
     @Query("UPDATE movies SET title = :title, updated_at = :updatedAt WHERE id = :movieId")

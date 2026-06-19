@@ -86,12 +86,6 @@ data class VaultAppState(
     val favoriteMovies: List<VaultMovie>
         get() = movies.filter { it.isFavorite }
 
-    fun unlock(passcode: String): VaultAppState {
-        return if (passcode.isBlank()) this else copy(isLocked = false)
-    }
-
-    fun requireUnlock(): VaultAppState = copy(isLocked = true)
-
     fun selectTab(tab: VaultTab): VaultAppState {
         return when (tab) {
             VaultTab.LibraryManage -> copy(selectedTab = tab, selectedLibraryId = null, selectedMovieId = null)
@@ -165,7 +159,6 @@ data class VaultAppState(
 
     companion object {
         private const val DEFAULT_LIBRARY_ID = "library-main"
-        private const val SECOND_LIBRARY_ID = "library-favorites"
         private const val SAMPLE_MOVIE_ID = "movie-sample"
 
         fun initial(): VaultAppState {
@@ -174,13 +167,8 @@ data class VaultAppState(
                 name = "我的片库",
                 movieIds = listOf(SAMPLE_MOVIE_ID)
             )
-            val secondLibrary = VaultLibrary(
-                id = SECOND_LIBRARY_ID,
-                name = "收藏片库",
-                movieIds = emptyList()
-            )
             val tags = listOf(
-                MovieTag(id = "tag-favorite", name = "收藏"),
+                MovieTag(id = "tag-favorite", name = "精选"),
                 MovieTag(id = "tag-unwatched", name = "未看")
             )
             val sampleMovie = VaultMovie(
@@ -207,8 +195,8 @@ data class VaultAppState(
                 lastOpenedAt = 1_000L
             )
             return VaultAppState(
-                isLocked = true,
-                libraries = listOf(defaultLibrary, secondLibrary),
+                isLocked = false,
+                libraries = listOf(defaultLibrary),
                 movies = listOf(sampleMovie),
                 tags = tags,
                 selectedLibraryId = null,

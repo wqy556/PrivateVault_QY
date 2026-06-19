@@ -6,7 +6,9 @@
 package com.privatevault.ui
 
 import android.app.Activity
+import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import android.view.ViewGroup
 import android.widget.MediaController
 import android.widget.Toast
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -40,13 +43,11 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
@@ -71,7 +72,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,15 +81,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.privatevault.core.ImportMode
@@ -100,9 +96,13 @@ import com.privatevault.core.VaultAppState
 import com.privatevault.core.VaultLibrary
 import com.privatevault.core.VaultMovie
 import com.privatevault.core.VaultTab
+import com.privatevault.core.filterLibraries
+import com.privatevault.core.filterMovies
 import com.privatevault.data.VaultRepository
+import com.privatevault.media.LibraryImageExporter
 import com.privatevault.media.MediaStoreOriginalRemovalGateway
 import com.privatevault.media.PrivateMediaImporter
+import com.privatevault.media.planLibraryImageExport
 import coil.compose.AsyncImage
 import java.io.File
 import kotlinx.coroutines.launch
@@ -112,7 +112,6 @@ fun PrivateVaultApp(repository: VaultRepository) {
     val viewModel: VaultViewModel = viewModel(factory = VaultViewModelFactory(repository))
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var history by remember { mutableStateOf(emptyList<VaultAppState>()) }
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     fun navigate(nextState: VaultAppState) {
         if (nextState != state) {
@@ -121,99 +120,33 @@ fun PrivateVaultApp(repository: VaultRepository) {
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                viewModel.requireUnlock()
-                history = emptyList()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        if (state.isLocked) {
-            UnlockScreen(onUnlock = viewModel::unlock)
-        } else {
-            BackHandler(enabled = history.isNotEmpty()) {
-                viewModel.applyNavigation(history.last())
-                history = history.dropLast(1)
-            }
-            VaultScaffold(
-                state = state,
-                onTabSelected = { navigate(state.selectTab(it)) },
-                onLock = {
-                    viewModel.requireUnlock()
-                    history = emptyList()
-                },
-                onAddLibrary = viewModel::addLibrary,
-                onRenameLibrary = viewModel::renameLibrary,
-                onDeleteLibrary = viewModel::deleteLibrary,
-                onAddMovie = viewModel::addMovie,
-                onSelectLibrary = { navigate(state.selectLibrary(it)) },
-                onOpenMovie = { navigate(state.openMovie(it)) },
-                onStageImages = viewModel::stageImageSelection,
-                onImagesImported = viewModel::addMovieImages,
-                onDeleteMovieImage = viewModel::deleteMovieImage,
-                onUpdateMovieTitle = viewModel::updateMovieTitle,
-                onUpdateMovieNotes = viewModel::updateMovieNotes,
-                onToggleFavorite = viewModel::toggleFavorite,
-                onAddLink = viewModel::addLink,
-                onDeleteLink = viewModel::deleteLink,
-                onAssignTag = viewModel::assignTag,
-                onCreateAndAssignTag = viewModel::createAndAssignTag,
-                onRemoveTag = viewModel::removeTag
-            )
+        BackHandler(enabled = history.isNotEmpty()) {
+            viewModel.applyNavigation(history.last())
+            history = history.dropLast(1)
         }
-    }
-}
-
-@Composable
-private fun UnlockScreen(onUnlock: (String) -> Unit) {
-    var passcode by remember { mutableStateOf("") }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = Icons.Default.Lock,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.primary
+        VaultScaffold(
+            state = state,
+            onTabSelected = { navigate(state.selectTab(it)) },
+            onAddLibrary = viewModel::addLibrary,
+            onRenameLibrary = viewModel::renameLibrary,
+            onDeleteLibrary = viewModel::deleteLibrary,
+            onAddMovie = viewModel::addMovie,
+            onSelectLibrary = { navigate(state.selectLibrary(it)) },
+            onOpenMovie = { navigate(state.openMovie(it)) },
+            onStageImages = viewModel::stageImageSelection,
+            onImagesImported = viewModel::addMovieImages,
+            onDeleteMovieImage = viewModel::deleteMovieImage,
+            onUpdateMovieTitle = viewModel::updateMovieTitle,
+            onUpdateMovieNotes = viewModel::updateMovieNotes,
+            onToggleFavorite = viewModel::toggleFavorite,
+            onAddLink = viewModel::addLink,
+            onDeleteLink = viewModel::deleteLink,
+            onAssignTag = viewModel::assignTag,
+            onCreateAndAssignTag = viewModel::createAndAssignTag,
+            onRemoveTag = viewModel::removeTag,
+            onDeleteMovie = viewModel::deleteMovie
         )
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "PrivateVault", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            text = "输入密码进入本地私密片库",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        OutlinedTextField(
-            value = passcode,
-            onValueChange = { passcode = it },
-            label = { Text("密码或 PIN") },
-            visualTransformation = PasswordVisualTransformation(),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { onUnlock(passcode) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-        ) {
-            Icon(imageVector = Icons.Default.LockOpen, contentDescription = null)
-            Spacer(modifier = Modifier.size(8.dp))
-            Text("解锁")
-        }
     }
 }
 
@@ -221,7 +154,6 @@ private fun UnlockScreen(onUnlock: (String) -> Unit) {
 private fun VaultScaffold(
     state: VaultAppState,
     onTabSelected: (VaultTab) -> Unit,
-    onLock: () -> Unit,
     onAddLibrary: (String) -> Unit,
     onRenameLibrary: (String, String) -> Unit,
     onDeleteLibrary: (String) -> Unit,
@@ -238,8 +170,12 @@ private fun VaultScaffold(
     onDeleteLink: (String) -> Unit,
     onAssignTag: (String, String) -> Unit,
     onCreateAndAssignTag: (String, String) -> Unit,
-    onRemoveTag: (String, String) -> Unit
+    onRemoveTag: (String, String) -> Unit,
+    onDeleteMovie: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    var showSystemLockDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         bottomBar = {
             VaultBottomBar(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
@@ -250,10 +186,11 @@ private fun VaultScaffold(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            TopHeader(onLock = onLock)
+            TopHeader(onOpenSystemLockHelp = { showSystemLockDialog = true })
             when (state.selectedTab) {
                 VaultTab.LibraryManage -> LibraryManageScreen(
                     libraries = state.libraries,
+                    movies = state.movies,
                     recentMovies = state.recentlyOpenedMovies,
                     tags = state.tags,
                     onAddLibrary = onAddLibrary,
@@ -273,6 +210,7 @@ private fun VaultScaffold(
                 VaultTab.LibraryDetail -> LibraryDetailScreen(
                     library = state.selectedLibrary,
                     movies = state.moviesInSelectedLibrary,
+                    allMovies = state.movies,
                     tags = state.tags,
                     onAddMovie = onAddMovie,
                     onOpenMovie = onOpenMovie
@@ -293,17 +231,31 @@ private fun VaultScaffold(
                     onDeleteLink = onDeleteLink,
                     onAssignTag = onAssignTag,
                     onCreateAndAssignTag = onCreateAndAssignTag,
-                    onRemoveTag = onRemoveTag
+                    onRemoveTag = onRemoveTag,
+                    onDeleteMovie = onDeleteMovie
                 )
 
                 VaultTab.Settings -> SettingsScreen()
             }
         }
     }
+
+    if (showSystemLockDialog) {
+        SystemLockHelpDialog(
+            onDismiss = { showSystemLockDialog = false },
+            onOpenSettings = {
+                showSystemLockDialog = false
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
+                context.startActivity(intent)
+            }
+        )
+    }
 }
 
 @Composable
-private fun TopHeader(onLock: () -> Unit) {
+private fun TopHeader(onOpenSystemLockHelp: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -319,15 +271,40 @@ private fun TopHeader(onLock: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
             )
         }
-        IconButton(onClick = onLock) {
-            Icon(imageVector = Icons.Default.Lock, contentDescription = "锁定 App")
+        IconButton(onClick = onOpenSystemLockHelp) {
+            Icon(imageVector = Icons.Default.LockOpen, contentDescription = "系统应用锁设置")
         }
     }
 }
 
 @Composable
+private fun SystemLockHelpDialog(
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("使用系统应用锁") },
+        text = {
+            Text("PrivateVault 默认不内置 App 锁。建议在系统设置中为本应用开启应用锁、隐私锁或生物识别保护。不同手机厂商入口不同，这里会先打开本应用的系统设置页。")
+        },
+        confirmButton = {
+            TextButton(onClick = onOpenSettings) {
+                Text("打开设置")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
 private fun LibraryManageScreen(
     libraries: List<VaultLibrary>,
+    movies: List<VaultMovie>,
     recentMovies: List<VaultMovie>,
     tags: List<MovieTag>,
     onAddLibrary: (String) -> Unit,
@@ -339,6 +316,14 @@ private fun LibraryManageScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<VaultLibrary?>(null) }
     var deleteTarget by remember { mutableStateOf<VaultLibrary?>(null) }
+    var query by remember { mutableStateOf("") }
+    var selectedTagIds by remember { mutableStateOf(emptySet<String>()) }
+    val filteredLibraries = filterLibraries(libraries, query)
+        .filter { library ->
+            selectedTagIds.isEmpty() ||
+                movies.any { movie -> movie.id in library.movieIds && movie.tagIds.any { it in selectedTagIds } }
+        }
+    val filteredRecentMovies = filterMovies(recentMovies, query, selectedTagIds)
 
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
@@ -348,6 +333,17 @@ private fun LibraryManageScreen(
             SectionHeader(title = "片库管理", subtitle = "这里管理多个片库，不展示某个片库内部影片。")
         }
         item {
+            SearchAndTagFilters(
+                query = query,
+                onQueryChange = { query = it },
+                tags = tags,
+                selectedTagIds = selectedTagIds,
+                onToggleTag = { tagId ->
+                    selectedTagIds = selectedTagIds.toggle(tagId)
+                }
+            )
+        }
+        item {
             Button(
                 onClick = { showAddDialog = true },
                 modifier = Modifier.height(48.dp)
@@ -355,7 +351,7 @@ private fun LibraryManageScreen(
                 Text("新增片库")
             }
         }
-        items(libraries) { library ->
+        items(filteredLibraries) { library ->
             LibraryCard(
                 library = library,
                 onClick = { onSelectLibrary(library.id) },
@@ -366,7 +362,7 @@ private fun LibraryManageScreen(
         item {
             SectionHeader(title = "最近打开", subtitle = "最多显示最近 5 条。")
         }
-        items(recentMovies.take(5)) { movie ->
+        items(filteredRecentMovies.take(5)) { movie ->
             MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
         }
     }
@@ -480,6 +476,11 @@ private fun FavoritesScreen(
     tags: List<MovieTag>,
     onOpenMovie: (String) -> Unit
 ) {
+    var query by remember { mutableStateOf("") }
+    var selectedTagIds by remember { mutableStateOf(emptySet<String>()) }
+    val filteredMovies = filterMovies(movies, query, selectedTagIds)
+    val filteredRecentMovies = filterMovies(recentMovies, query, selectedTagIds)
+
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -487,19 +488,28 @@ private fun FavoritesScreen(
         item {
             SectionHeader(title = "收藏", subtitle = "这里展示用户收藏的影片。")
         }
-        if (movies.isEmpty()) {
+        item {
+            SearchAndTagFilters(
+                query = query,
+                onQueryChange = { query = it },
+                tags = tags,
+                selectedTagIds = selectedTagIds,
+                onToggleTag = { tagId -> selectedTagIds = selectedTagIds.toggle(tagId) }
+            )
+        }
+        if (filteredMovies.isEmpty()) {
             item {
                 MetadataCard(title = "暂无收藏", lines = listOf("进入影片详情后可将影片加入收藏。"))
             }
         } else {
-            items(movies) { movie ->
+            items(filteredMovies) { movie ->
                 MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
             }
         }
         item {
             SectionHeader(title = "最近打开", subtitle = "最多显示最近 5 条。")
         }
-        items(recentMovies.take(5)) { movie ->
+        items(filteredRecentMovies.take(5)) { movie ->
             MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
         }
     }
@@ -509,11 +519,19 @@ private fun FavoritesScreen(
 private fun LibraryDetailScreen(
     library: VaultLibrary?,
     movies: List<VaultMovie>,
+    allMovies: List<VaultMovie>,
     tags: List<MovieTag>,
     onAddMovie: (String, String) -> Unit,
     onOpenMovie: (String) -> Unit
 ) {
     var showAddMovieDialog by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var selectedTagIds by remember { mutableStateOf(emptySet<String>()) }
+    val filteredMovies = filterMovies(movies, query, selectedTagIds)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val exporter = remember(context) { LibraryImageExporter(context) }
+    var exportMessage by remember(library?.id) { mutableStateOf<String?>(null) }
 
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
@@ -526,19 +544,54 @@ private fun LibraryDetailScreen(
             )
         }
         item {
-            OutlinedButton(
-                onClick = { showAddMovieDialog = true },
-                modifier = Modifier.height(48.dp)
-            ) {
-                Text("添加影片")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = { showAddMovieDialog = true },
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("添加影片")
+                }
+                OutlinedButton(
+                    enabled = library != null,
+                    onClick = {
+                        val selectedLibrary = library ?: return@OutlinedButton
+                        val plan = planLibraryImageExport(selectedLibrary, allMovies)
+                        if (plan.items.isEmpty()) {
+                            exportMessage = "当前片库没有可导出的图片。"
+                            return@OutlinedButton
+                        }
+                        scope.launch {
+                            val result = exporter.export(plan)
+                            exportMessage = "已导出 ${result.exportedCount} 张到相册“${plan.albumName}”" +
+                                if (result.failedCount > 0) "，${result.failedCount} 张失败。" else "。"
+                        }
+                    },
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("导出图片")
+                }
             }
         }
-        if (movies.isEmpty()) {
+        item {
+            SearchAndTagFilters(
+                query = query,
+                onQueryChange = { query = it },
+                tags = tags,
+                selectedTagIds = selectedTagIds,
+                onToggleTag = { tagId -> selectedTagIds = selectedTagIds.toggle(tagId) }
+            )
+        }
+        exportMessage?.let { message ->
             item {
-                MetadataCard(title = "暂无影片", lines = listOf("后续会接入添加影片表单。"))
+                MetadataCard(title = "导出结果", lines = listOf(message))
+            }
+        }
+        if (filteredMovies.isEmpty()) {
+            item {
+                MetadataCard(title = "暂无影片", lines = listOf("可以添加影片，或调整搜索和标签筛选。"))
             }
         } else {
-            items(movies) { movie ->
+            items(filteredMovies) { movie ->
                 MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
             }
         }
@@ -592,6 +645,36 @@ private fun MovieTitleDialog(
 }
 
 @Composable
+private fun SearchAndTagFilters(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    tags: List<MovieTag>,
+    selectedTagIds: Set<String>,
+    onToggleTag: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            label = { Text("搜索") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (tags.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(tags) { tag ->
+                    InputChip(
+                        selected = tag.id in selectedTagIds,
+                        onClick = { onToggleTag(tag.id) },
+                        label = { Text(tag.name) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun MovieDetailScreen(
     movie: VaultMovie?,
     tags: List<MovieTag>,
@@ -607,7 +690,8 @@ private fun MovieDetailScreen(
     onDeleteLink: (String) -> Unit,
     onAssignTag: (String, String) -> Unit,
     onCreateAndAssignTag: (String, String) -> Unit,
-    onRemoveTag: (String, String) -> Unit
+    onRemoveTag: (String, String) -> Unit,
+    onDeleteMovie: (String) -> Unit
 ) {
     if (movie == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -636,6 +720,7 @@ private fun MovieDetailScreen(
     var draftNotes by remember(movie.id, movie.notes) { mutableStateOf(movie.notes) }
     var showAddLinkDialog by remember { mutableStateOf(false) }
     var showAddTagDialog by remember { mutableStateOf(false) }
+    var showDeleteMovieDialog by remember { mutableStateOf(false) }
 
     // ── Delete originals launcher ──
     val deleteOriginalsLauncher = rememberLauncherForActivityResult(
@@ -753,6 +838,13 @@ private fun MovieDetailScreen(
                                 imageVector = if (movie.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
                                 contentDescription = if (movie.isFavorite) "取消收藏" else "加入收藏",
                                 tint = if (movie.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                            )
+                        }
+                        IconButton(onClick = { showDeleteMovieDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "删除影片",
+                                tint = MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -991,6 +1083,28 @@ private fun MovieDetailScreen(
         )
     }
 
+    // ── Delete Movie Confirmation ──
+    if (showDeleteMovieDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteMovieDialog = false },
+            title = { Text("删除影片") },
+            text = { Text("确定要删除「${movie.title}」吗？\n影片的所有详情图和链接也会被删除，此操作不可撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteMovie(movie.id)
+                    showDeleteMovieDialog = false
+                }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteMovieDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
     previewStartIndex?.let { startIndex ->
         if (movie.detailImages.isNotEmpty()) {
             MediaPreviewDialog(
@@ -1141,7 +1255,7 @@ private fun SettingsScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(text = "设置", style = MaterialTheme.typography.headlineSmall)
-        MetadataCard(title = "App 锁", lines = listOf("后续接入 PIN 存储和生物识别。"))
+        MetadataCard(title = "系统应用锁", lines = listOf("本应用不内置 PIN。请在系统设置中启用应用锁、隐私锁或生物识别保护。"))
         MetadataCard(title = "安全边界", lines = listOf("当前版本使用 App 私有目录，不承诺文件级加密。"))
         MetadataCard(title = "截图", lines = listOf("后续可通过窗口安全标记禁止系统截图。"))
     }
@@ -1565,4 +1679,8 @@ private fun LinkType.label(): String {
         LinkType.Web -> "网页"
         LinkType.Other -> "其他"
     }
+}
+
+private fun Set<String>.toggle(value: String): Set<String> {
+    return if (value in this) this - value else this + value
 }

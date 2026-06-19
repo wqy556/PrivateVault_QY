@@ -148,6 +148,42 @@ class VaultRepositoryTest {
         assertEquals(listOf("image-2"), state.movies.single().detailImages.map { it.id })
         assertEquals("video/mp4", state.movies.single().coverImage?.mimeType)
     }
+
+    @Test
+    fun seedSampleDataKeepsOnlyDemoLibraryAndDoesNotCreateFavoriteLibrary() = runTest {
+        val store = FakeVaultStore(VaultSnapshot.empty())
+        val repository = VaultRepository(store)
+
+        repository.seedSampleDataIfEmpty()
+        val state = repository.state.first()
+
+        assertEquals(listOf("我的片库"), state.libraries.map { it.name })
+        assertEquals(listOf("示例影片"), state.movies.map { it.title })
+        assertEquals(listOf("movie-sample"), state.libraries.single().movieIds)
+    }
+
+    @Test
+    fun seedSampleDataRemovesLegacyFavoriteLibraryFromExistingDatabases() = runTest {
+        val store = FakeVaultStore(
+            VaultSnapshot(
+                libraries = listOf(
+                    LibraryEntity("library-main", "我的片库", 0, 1L, 1L),
+                    LibraryEntity("library-favorites", "收藏片库", 1, 1L, 1L)
+                ),
+                movies = emptyList(),
+                images = emptyList(),
+                links = emptyList(),
+                tags = emptyList(),
+                movieTags = emptyList()
+            )
+        )
+        val repository = VaultRepository(store)
+
+        repository.seedSampleDataIfEmpty()
+        val state = repository.state.first()
+
+        assertEquals(listOf("我的片库"), state.libraries.map { it.name })
+    }
 }
 
 private fun sequenceIds(vararg ids: String): () -> String {
@@ -165,7 +201,14 @@ private class FakeVaultStore(initialSnapshot: VaultSnapshot) : VaultStore {
     }
 
     override suspend fun updateLibraryName(libraryId: String, name: String, updatedAt: Long) = Unit
-    override suspend fun deleteLibrary(libraryId: String) = Unit
+    override suspend fun deleteLibrary(libraryId: String) {
+        snapshots.value = snapshots.value.copy(
+            libraries = snapshots.value.libraries.filterNot { it.id == libraryId },
+            movies = snapshots.value.movies.filterNot { movie ->
+                snapshots.value.libraries.firstOrNull { it.id == libraryId }?.id == movie.libraryId
+            }
+        )
+    }
 
     override suspend fun insertMovie(movie: MovieEntity) {
         snapshots.value = snapshots.value.copy(movies = snapshots.value.movies + movie)
@@ -189,6 +232,14 @@ private class FakeVaultStore(initialSnapshot: VaultSnapshot) : VaultStore {
     override suspend fun deleteMovieImage(imageId: String) {
         snapshots.value = snapshots.value.copy(
             images = snapshots.value.images.filterNot { it.id == imageId }
+        )
+    }
+    override suspend fun deleteMovie(movieId: String) {
+        snapshots.value = snapshots.value.copy(
+            movies = snapshots.value.movies.filterNot { it.id == movieId },
+            images = snapshots.value.images.filterNot { it.movieId == movieId },
+            links = snapshots.value.links.filterNot { it.movieId == movieId },
+            movieTags = snapshots.value.movieTags.filterNot { it.movieId == movieId }
         )
     }
     override suspend fun insertLink(link: MovieLinkEntity) = Unit

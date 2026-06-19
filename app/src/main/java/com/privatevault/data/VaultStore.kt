@@ -17,6 +17,8 @@ interface VaultStore {
 
     suspend fun deleteMovieImage(imageId: String)
 
+    suspend fun deleteMovie(movieId: String)
+
     // ── Movie update operations ──
 
     suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long)

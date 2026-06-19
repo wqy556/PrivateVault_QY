@@ -57,6 +57,10 @@ class RoomVaultStore(private val dao: VaultDao) : VaultStore {
         dao.deleteMovieImage(imageId)
     }
 
+    override suspend fun deleteMovie(movieId: String) {
+        dao.deleteMovie(movieId)
+    }
+
     // ── Movie update operations ──
 
     override suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long) {

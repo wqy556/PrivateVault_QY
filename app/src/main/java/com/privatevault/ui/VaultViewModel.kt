@@ -36,19 +36,8 @@ class VaultViewModel(private val repository: VaultRepository) : ViewModel() {
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = VaultSnapshot.empty().toVaultAppState(isLocked = true)
+        initialValue = VaultSnapshot.empty().toVaultAppState(isLocked = false)
     )
-
-    // ── Auth ──
-
-    fun unlock(passcode: String) {
-        if (passcode.isBlank()) return
-        transientState.update { it.copy(isLocked = false) }
-    }
-
-    fun requireUnlock() {
-        transientState.value = VaultTransientState(isLocked = true)
-    }
 
     // ── Navigation ──
 
@@ -140,6 +129,13 @@ class VaultViewModel(private val repository: VaultRepository) : ViewModel() {
         viewModelScope.launch { repository.deleteMovieImage(imageId) }
     }
 
+    fun deleteMovie(movieId: String) {
+        transientState.update {
+            it.copy(selectedMovieId = null, selectedTab = VaultTab.LibraryManage)
+        }
+        viewModelScope.launch { repository.deleteMovie(movieId) }
+    }
+
     // ── Links ──
 
     fun addLink(movieId: String, url: String, type: LinkType) {
@@ -181,7 +177,7 @@ data class ImportedVaultMedia(
 )
 
 private data class VaultTransientState(
-    val isLocked: Boolean = true,
+    val isLocked: Boolean = false,
     val selectedLibraryId: String? = null,
     val selectedMovieId: String? = null,
     val selectedTab: VaultTab = VaultTab.LibraryManage,

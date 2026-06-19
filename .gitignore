@@ -8,3 +8,12 @@ local.properties
 *.apk
 *.aab
 *.hprof
+*.jks
+*.keystore
+app/release/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.swo

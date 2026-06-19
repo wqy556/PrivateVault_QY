@@ -98,6 +98,15 @@ class VaultRepository(
         runCatching { File(image.privatePath).delete() }
     }
 
+    suspend fun deleteMovie(movieId: String) {
+        val snapshot = store.observeSnapshot().first()
+        val imagesToDelete = snapshot.images.filter { it.movieId == movieId }
+        store.deleteMovie(movieId)
+        imagesToDelete.forEach { image ->
+            runCatching { File(image.privatePath).delete() }
+        }
+    }
+
     // ── Movie update operations ──
 
     suspend fun updateMovieTitle(movieId: String, title: String) {
@@ -182,7 +191,12 @@ class VaultRepository(
 
     suspend fun seedSampleDataIfEmpty() {
         val snapshot = store.observeSnapshot().first()
-        if (snapshot.libraries.isNotEmpty()) return
+        if (snapshot.libraries.isNotEmpty()) {
+            if (snapshot.libraries.any { it.id == LEGACY_FAVORITE_LIBRARY_ID }) {
+                store.deleteLibrary(LEGACY_FAVORITE_LIBRARY_ID)
+            }
+            return
+        }
 
         val now = clock()
         val defaultLibrary = LibraryEntity(
@@ -192,15 +206,7 @@ class VaultRepository(
             createdAt = now,
             updatedAt = now
         )
-        val secondLibrary = LibraryEntity(
-            id = "library-favorites",
-            name = "收藏片库",
-            sortOrder = 1,
-            createdAt = now,
-            updatedAt = now
-        )
         store.upsertLibrary(defaultLibrary)
-        store.upsertLibrary(secondLibrary)
 
         val sampleMovie = MovieEntity(
             id = "movie-sample",
@@ -214,7 +220,7 @@ class VaultRepository(
         )
         store.insertMovie(sampleMovie)
 
-        val tag1 = TagEntity(id = "tag-favorite", name = "收藏", color = null, createdAt = now, updatedAt = now)
+        val tag1 = TagEntity(id = "tag-favorite", name = "精选", color = null, createdAt = now, updatedAt = now)
         val tag2 = TagEntity(id = "tag-unwatched", name = "未看", color = null, createdAt = now, updatedAt = now)
         store.upsertTag(tag1)
         store.upsertTag(tag2)
@@ -232,5 +238,9 @@ class VaultRepository(
                 createdAt = now
             )
         )
+    }
+
+    private companion object {
+        const val LEGACY_FAVORITE_LIBRARY_ID = "library-favorites"
     }
 }

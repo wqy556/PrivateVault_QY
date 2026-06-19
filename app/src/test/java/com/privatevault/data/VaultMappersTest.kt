@@ -51,7 +51,7 @@ class VaultMappersTest {
                 )
             ),
             tags = listOf(
-                TagEntity(id = "tag-1", name = "收藏", color = null, createdAt = 7L, updatedAt = 8L)
+                TagEntity(id = "tag-1", name = "精选", color = null, createdAt = 7L, updatedAt = 8L)
             ),
             movieTags = listOf(MovieTagCrossRef(movieId = "movie-1", tagId = "tag-1"))
         )
@@ -68,7 +68,7 @@ class VaultMappersTest {
         assertEquals(false, state.movies.single().coverImage?.originalRemoved)
         assertEquals(LinkType.Quark, state.movies.single().links.single().type)
         assertEquals(listOf("tag-1"), state.movies.single().tagIds)
-        assertEquals("收藏", state.tags.single().name)
+        assertEquals("精选", state.tags.single().name)
         assertNotNull(state.favoriteMovies.single().coverImage)
     }
 }
