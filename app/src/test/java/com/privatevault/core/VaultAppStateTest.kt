@@ -72,17 +72,24 @@ class VaultAppStateTest {
 
     @Test
     fun canAddRenameAndDeleteLibraries() {
-        val added = VaultAppState.initial().addLibrary()
+        val added = VaultAppState.initial().addLibrary("自定义片库")
         val newLibrary = added.libraries.last()
 
-        assertEquals("新片库 3", newLibrary.name)
+        assertEquals("自定义片库", newLibrary.name)
 
-        val renamed = added.renameLibrary(newLibrary.id, "自定义片库")
-        assertEquals("自定义片库", renamed.libraries.last().name)
+        val renamed = added.renameLibrary(newLibrary.id, "重命名片库")
+        assertEquals("重命名片库", renamed.libraries.last().name)
 
         val deleted = renamed.deleteLibrary(newLibrary.id)
         assertEquals(2, deleted.libraries.size)
         assertEquals(VaultTab.LibraryManage, deleted.selectedTab)
+    }
+
+    @Test
+    fun blankLibraryNameIsIgnored() {
+        val state = VaultAppState.initial().addLibrary("   ")
+
+        assertEquals(2, state.libraries.size)
     }
 
     @Test

@@ -18,14 +18,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -101,7 +103,7 @@ fun PrivateVaultApp() {
                     state = state.requireUnlock()
                     history = emptyList()
                 },
-                onAddLibrary = { navigate(state.addLibrary()) },
+                onAddLibrary = { name -> navigate(state.addLibrary(name)) },
                 onRenameLibrary = { libraryId, name -> navigate(state.renameLibrary(libraryId, name)) },
                 onDeleteLibrary = { libraryId -> navigate(state.deleteLibrary(libraryId)) },
                 onSelectLibrary = { navigate(state.selectLibrary(it)) },
@@ -131,7 +133,7 @@ private fun UnlockScreen(onUnlock: (String) -> Unit) {
         Spacer(modifier = Modifier.height(24.dp))
         Text(text = "PrivateVault", style = MaterialTheme.typography.headlineMedium)
         Text(
-            text = "输入密码以进入本地私密片库",
+            text = "输入密码进入本地私密片库",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
         )
@@ -163,7 +165,7 @@ private fun VaultScaffold(
     state: VaultAppState,
     onTabSelected: (VaultTab) -> Unit,
     onLock: () -> Unit,
-    onAddLibrary: () -> Unit,
+    onAddLibrary: (String) -> Unit,
     onRenameLibrary: (String, String) -> Unit,
     onDeleteLibrary: (String) -> Unit,
     onSelectLibrary: (String) -> Unit,
@@ -249,12 +251,16 @@ private fun LibraryManageScreen(
     libraries: List<VaultLibrary>,
     recentMovies: List<VaultMovie>,
     tags: List<MovieTag>,
-    onAddLibrary: () -> Unit,
+    onAddLibrary: (String) -> Unit,
     onRenameLibrary: (String, String) -> Unit,
     onDeleteLibrary: (String) -> Unit,
     onSelectLibrary: (String) -> Unit,
     onOpenMovie: (String) -> Unit
 ) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<VaultLibrary?>(null) }
+    var deleteTarget by remember { mutableStateOf<VaultLibrary?>(null) }
+
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -264,7 +270,7 @@ private fun LibraryManageScreen(
         }
         item {
             Button(
-                onClick = onAddLibrary,
+                onClick = { showAddDialog = true },
                 modifier = Modifier.height(48.dp)
             ) {
                 Text("新增片库")
@@ -273,10 +279,9 @@ private fun LibraryManageScreen(
         items(libraries) { library ->
             LibraryCard(
                 library = library,
-                showManageActions = true,
                 onClick = { onSelectLibrary(library.id) },
-                onRename = { onRenameLibrary(library.id, "${library.name}（已改名）") },
-                onDelete = { onDeleteLibrary(library.id) }
+                onRename = { renameTarget = library },
+                onDelete = { deleteTarget = library }
             )
         }
         item {
@@ -286,6 +291,107 @@ private fun LibraryManageScreen(
             MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
         }
     }
+
+    if (showAddDialog) {
+        LibraryNameDialog(
+            title = "新增片库",
+            initialName = "",
+            confirmText = "创建",
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name ->
+                onAddLibrary(name)
+                showAddDialog = false
+            }
+        )
+    }
+
+    renameTarget?.let { library ->
+        LibraryNameDialog(
+            title = "重命名片库",
+            initialName = library.name,
+            confirmText = "保存",
+            onDismiss = { renameTarget = null },
+            onConfirm = { name ->
+                onRenameLibrary(library.id, name)
+                renameTarget = null
+            }
+        )
+    }
+
+    deleteTarget?.let { library ->
+        DeleteLibraryDialog(
+            library = library,
+            onDismiss = { deleteTarget = null },
+            onConfirm = {
+                onDeleteLibrary(library.id)
+                deleteTarget = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun LibraryNameDialog(
+    title: String,
+    initialName: String,
+    confirmText: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    val trimmedName = name.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("片库名称") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = trimmedName.isNotEmpty(),
+                onClick = { onConfirm(trimmedName) }
+            ) {
+                Text(confirmText)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DeleteLibraryDialog(
+    library: VaultLibrary,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("删除片库") },
+        text = {
+            Text("删除“${library.name}”后，片库内的影片记录也会一起移除。")
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("删除")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable
@@ -345,8 +451,14 @@ private fun LibraryDetailScreen(
                 Text("添加影片")
             }
         }
-        items(movies) { movie ->
-            MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
+        if (movies.isEmpty()) {
+            item {
+                MetadataCard(title = "暂无影片", lines = listOf("后续会接入添加影片表单。"))
+            }
+        } else {
+            items(movies) { movie ->
+                MovieRow(movie = movie, tags = tags.filter { it.id in movie.tagIds }, onClick = { onOpenMovie(movie.id) })
+            }
         }
     }
 }
@@ -456,7 +568,6 @@ private fun SectionHeader(title: String, subtitle: String) {
 @Composable
 private fun LibraryCard(
     library: VaultLibrary,
-    showManageActions: Boolean,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
@@ -474,13 +585,11 @@ private fun LibraryCard(
                 Text(text = library.name, style = MaterialTheme.typography.titleMedium)
                 Text(text = "${library.movieIds.size} 个影片", style = MaterialTheme.typography.bodyMedium)
             }
-            if (showManageActions) {
-                IconButton(onClick = onRename) {
-                    Icon(imageVector = Icons.Default.Edit, contentDescription = "重命名片库")
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(imageVector = Icons.Default.Delete, contentDescription = "删除片库")
-                }
+            IconButton(onClick = onRename) {
+                Icon(imageVector = Icons.Default.Edit, contentDescription = "重命名片库")
+            }
+            IconButton(onClick = onDelete) {
+                Icon(imageVector = Icons.Default.Delete, contentDescription = "删除片库")
             }
         }
     }

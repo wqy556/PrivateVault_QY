@@ -111,11 +111,13 @@ data class VaultAppState(
         }
     }
 
-    fun addLibrary(): VaultAppState {
+    fun addLibrary(name: String): VaultAppState {
+        val trimmedName = name.trim()
+        if (trimmedName.isEmpty()) return this
         val nextNumber = libraries.size + 1
         val library = VaultLibrary(
             id = "library-$nextNumber",
-            name = "新片库 $nextNumber",
+            name = trimmedName,
             movieIds = emptyList()
         )
         return copy(libraries = libraries + library, selectedTab = VaultTab.LibraryManage)
