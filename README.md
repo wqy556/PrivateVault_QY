@@ -1,116 +1,98 @@
+<p align="center">
+  <img src="screenshots/1.jpg" width="200" />
+  <img src="screenshots/2.jpg" width="200" />
+  <img src="screenshots/3.jpg" width="200" />
+  <img src="screenshots/4.jpg" width="200" />
+</p>
+
 # PrivateVault
 
-一个**无账号、无云端、无服务器**的 Android 本地私密片库 App。
+**你的手机相册，由你决定谁能看。**
 
-> 把不想出现在手机相册的内容放进来，按「片库 → 影片 → 详情图 / 链接 / 备注 / 标签」管理，从系统媒体库彻底隐匿。
+> 一个完全离线的 Android 私密媒体管理器——不注册、不联网、不存云端。
+> 把不想出现在相册里的内容放到这里，像管理私人片库一样整理它。
 
-## 功能概览
+---
 
-| 模块 | 说明 |
+## 为什么做这个
+
+手机相册是一个"公共区域"——借手机、投屏、分享截图时，总有一些内容你不想被看到。
+
+PrivateVault 给你一个**真正私密的第二相册**。图片复制到 App 内部私有目录后，你可以选择**从系统相册中彻底删除原图**——相册干净了，内容也还安全地留在你的手机里。
+
+---
+
+## 一眼看全
+
+| | |
 |---|---|
-| 🔐 App 锁 | 启动 + 后台恢复双重锁定 |
-| 📚 片库管理 | 新增 / 重命名 / 删除，一个片库可包含多部影片 |
-| 🎬 影片管理 | 片名、封面图、详情图、网盘链接、备注、标签 |
-| 📸 图片导入 | 从系统相册**复制**（保留原图）或**迁移**（复制后删除原图） |
-| ⭐ 收藏 | 星标影片自动汇集在收藏 Tab |
-| 🏷 标签 | 自定义标签管理，支持多对多关联 |
-| 🔗 链接 | 夸克 / 百度网盘 / 迅雷 / 磁力 / 网页 多链接支持 |
-| 💾 本地优先 | Room 数据库 + App 私有目录存储，数据不出手机 |
+| 📚 **片库** | 以影片为单位组织内容，每个片库独立管理 |
+| 🖼️ **图片导入** | 复制保留原图，或者**迁移**——复制后删除原图，从相册彻底消失 |
+| ⭐ **收藏** | 星标一键收藏，独立 Tab 快速浏览 |
+| 🏷️ **标签** | 自定义标签，支持搜索和筛选 |
+| 🔗 **网盘链接** | 夸克 / 百度网盘 / 迅雷 / 磁力链接一把抓 |
+| 📝 **备注** | 随手记录整理状态、来源信息 |
+| 🔍 **搜索筛选** | 影片名搜索 + 标签组合筛选 |
+| 💾 **导出** | 随时将图片导出回系统相册 |
+| 🔐 **锁屏** | 切到后台自动锁定，任何密码即可进入 |
+| 📱 **零权限** | 不需要联网、不需要账号、不需要任何敏感权限 |
 
-## 技术栈
+---
 
-| 层级 | 技术 |
-|---|---|
-| UI | Jetpack Compose + Material 3 |
-| 架构 | MVVM + 不可变单向数据流 |
-| 数据库 | Room + KSP + Coroutines Flow |
-| 图片 | Coil 2.x |
-| 媒体操作 | Android Photo Picker + MediaStore API |
-| 测试 | JUnit 4 + kotlinx-coroutines-test |
+## 快速开始
+
+用 Android Studio 打开项目，Sync Gradle，点击 Run。
+
+```
+要求：Android Studio Hedgehog 或更新、JDK 17+、SDK API 36
+```
+
+命令行构建：
+
+```bash
+./gradlew :app:testDebugUnitTest   # 单测
+./gradlew assembleDebug            # 打 APK
+```
+
+---
 
 ## 项目结构
 
 ```
 app/src/main/java/com/privatevault/
-├── core/        纯 Kotlin 领域模型，零 Android 依赖
-├── data/        Room 持久化层（DAO / Store / Repository）
-├── media/       Android 媒体文件 I/O（导入 / 导出 / 删除原图）
-├── ui/          Compose 界面 + ViewModel
+├── core/      纯 Kotlin 领域模型，零 Android 依赖
+├── data/      Room 持久化（DAO / Store / Repository）
+├── media/     文件导入 / 导出 / 删除原图
+├── ui/        Jetpack Compose 界面 + ViewModel
 └── MainActivity.kt
 ```
 
-**## 截图** 
+## 技术栈
 
-![片库首页·](screenshots/1.jpg)
+Jetpack Compose · Material 3 · Room + KSP · Coil · Coroutines Flow · JUnit 4
 
- ![收藏详情](screenshots/2.jpg)
+---
 
+## 实现状态
 
+**已完成：** 片库 CRUD · 影片增删 · 图片导入/迁移 · 系统确认删原图 · Room 全量落库 · 链接 CRUD · 标签 CRUD · 收藏 · 搜索筛选 · 全屏预览 · 图片导出 · 种子数据 · 返回栈导航
 
- ![片库详情](screenshots/3.jpg)
+**路线图：** PIN 持久化 · 生物识别 · 文件加密
 
+---
 
+## 安全声明
 
-![设置](screenshots/4.jpg)
+当前版本文件存储在 App 私有目录中，其他 App 无法访问，但**未做文件级加密**。如果你需要强加密方案，欢迎参与或关注后续版本。
 
-## 构建运行
+---
 
-### 前提
+## License
 
-- Android Studio (Hedgehog 2023.1.1 或更新)
-- JDK 17 或更高版本（Android Studio 内置 JDK 即可）
-- Android SDK API 36
+MIT
 
-### 命令
-
-```bash
-方法一 # 推荐：直接用 Android Studio 打开项目，Sync Gradle 后点击 Run
-
-方法二 # 命令行构建（需确保 JAVA_HOME 指向 JDK 17+）
-./gradlew :app:testDebugUnitTest    # 运行单元测试
-./gradlew assembleDebug             # 构建 Debug APK
-
-# APK 输出路径
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-> 💡 如果命令行提示 `JVM 11`，请在系统环境变量中设置 `JAVA_HOME` 指向 JDK 17+ 的安装目录。Android Studio 用户无需额外配置。
-
-## 当前实现状态
-
-- [x] Compose 页面骨架（片库 / 收藏 / 设置 + 底部导航）
-- [x] App 锁 UI（输入密码解锁 / 后台切回锁定）
-- [x] 片库增删改 + 影片增删
-- [x] 图片导入（复制 / 迁移两种模式 + 系统确认删除原图）
-- [x] Room 持久化（片库 / 影片 / 详情图 / 链接 / 标签全部落库）
-- [x] 备注编辑、链接增删、标签管理
-- [x] 收藏切换 + 收藏页
-- [x] 封面图及详情图实际图片加载（Coil）
-- [x] 影片删除（含确认弹窗）
-- [x] 详情图全屏查看（HorizontalPager 左右滑动）
-- [x] 详情图删除（长按或按钮）
-- [x] 片名编辑（点击标题编辑）
-- [x] 图片导出到系统相册
-- [x] 影片搜索 + 标签筛选
-- [x] 种子数据（首次启动自动写入示例内容）
-- [x] 系统返回键 / 右滑返回历史栈
-
-### 待实现
-
-- [ ] 真实 PIN 存储与生物识别解锁
-- [ ] 文件级加密（当前使用 App 私有目录，未承诺文件级加密）
-- [ ] Release 签名配置指南
-
-## 安全边界
-
-> ⚠️ 当前版本使用 App 私有目录 + App 锁流程，**不承诺文件级加密**。
-
-文件存储在 `files/private_media/` 下（其他 App 不可访问，但未加密）。强加密方案在路线图中。
-
-## 开源协议
-
-MIT License — 详见 [LICENSE](LICENSE)。
+---
 
 ## 贡献
 
-欢迎提 Issue 和 PR。目前代码仍是个人早期项目，建议先沟通再动手，避免方向重复。
+欢迎 Issue 和 PR。这是个人项目，建议先开 Issue 讨论方向，避免重复劳动。
