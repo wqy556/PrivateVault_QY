@@ -24,7 +24,9 @@ data class VaultMovie(
 data class MovieImage(
     val id: String,
     val localPath: String?,
-    val importMode: ImportMode
+    val importMode: ImportMode,
+    val originalUri: String? = null,
+    val originalRemoved: Boolean = false
 )
 
 data class MovieLink(

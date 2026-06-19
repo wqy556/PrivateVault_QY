@@ -2,7 +2,15 @@
 
 package com.privatevault.ui
 
+import android.app.Activity
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,13 +33,21 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -49,36 +65,46 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.privatevault.core.ImportMode
 import com.privatevault.core.LinkType
 import com.privatevault.core.MovieTag
+import com.privatevault.core.MovieImage
 import com.privatevault.core.VaultAppState
 import com.privatevault.core.VaultLibrary
 import com.privatevault.core.VaultMovie
 import com.privatevault.core.VaultTab
+import com.privatevault.data.VaultRepository
+import com.privatevault.media.MediaStoreOriginalRemovalGateway
+import com.privatevault.media.PrivateMediaImporter
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 
 @Composable
-fun PrivateVaultApp() {
-    var state by remember { mutableStateOf(VaultAppState.initial()) }
+fun PrivateVaultApp(repository: VaultRepository) {
+    val viewModel: VaultViewModel = viewModel(factory = VaultViewModelFactory(repository))
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     var history by remember { mutableStateOf(emptyList<VaultAppState>()) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     fun navigate(nextState: VaultAppState) {
         if (nextState != state) {
             history = history + state
-            state = nextState
+            viewModel.applyNavigation(nextState)
         }
     }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                state = state.requireUnlock()
+                viewModel.requireUnlock()
                 history = emptyList()
             }
         }
@@ -90,25 +116,34 @@ fun PrivateVaultApp() {
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         if (state.isLocked) {
-            UnlockScreen(onUnlock = { passcode -> state = state.unlock(passcode) })
+            UnlockScreen(onUnlock = viewModel::unlock)
         } else {
             BackHandler(enabled = history.isNotEmpty()) {
-                state = history.last()
+                viewModel.applyNavigation(history.last())
                 history = history.dropLast(1)
             }
             VaultScaffold(
                 state = state,
                 onTabSelected = { navigate(state.selectTab(it)) },
                 onLock = {
-                    state = state.requireUnlock()
+                    viewModel.requireUnlock()
                     history = emptyList()
                 },
-                onAddLibrary = { name -> navigate(state.addLibrary(name)) },
-                onRenameLibrary = { libraryId, name -> navigate(state.renameLibrary(libraryId, name)) },
-                onDeleteLibrary = { libraryId -> navigate(state.deleteLibrary(libraryId)) },
+                onAddLibrary = viewModel::addLibrary,
+                onRenameLibrary = viewModel::renameLibrary,
+                onDeleteLibrary = viewModel::deleteLibrary,
+                onAddMovie = viewModel::addMovie,
                 onSelectLibrary = { navigate(state.selectLibrary(it)) },
                 onOpenMovie = { navigate(state.openMovie(it)) },
-                onStageImages = { mode -> navigate(state.stageImageSelection(3, mode)) }
+                onStageImages = viewModel::stageImageSelection,
+                onImagesImported = viewModel::addMovieImages,
+                onUpdateMovieNotes = viewModel::updateMovieNotes,
+                onToggleFavorite = viewModel::toggleFavorite,
+                onAddLink = viewModel::addLink,
+                onDeleteLink = viewModel::deleteLink,
+                onAssignTag = viewModel::assignTag,
+                onCreateAndAssignTag = viewModel::createAndAssignTag,
+                onRemoveTag = viewModel::removeTag
             )
         }
     }
@@ -168,9 +203,18 @@ private fun VaultScaffold(
     onAddLibrary: (String) -> Unit,
     onRenameLibrary: (String, String) -> Unit,
     onDeleteLibrary: (String) -> Unit,
+    onAddMovie: (String, String) -> Unit,
     onSelectLibrary: (String) -> Unit,
     onOpenMovie: (String) -> Unit,
-    onStageImages: (ImportMode) -> Unit
+    onStageImages: (Int, ImportMode) -> Unit,
+    onImagesImported: (String, List<ImportedVaultMedia>, ImportMode, Boolean) -> Unit,
+    onUpdateMovieNotes: (String, String) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onAddLink: (String, String, LinkType) -> Unit,
+    onDeleteLink: (String) -> Unit,
+    onAssignTag: (String, String) -> Unit,
+    onCreateAndAssignTag: (String, String) -> Unit,
+    onRemoveTag: (String, String) -> Unit
 ) {
     Scaffold(
         bottomBar = {
@@ -206,6 +250,7 @@ private fun VaultScaffold(
                     library = state.selectedLibrary,
                     movies = state.moviesInSelectedLibrary,
                     tags = state.tags,
+                    onAddMovie = onAddMovie,
                     onOpenMovie = onOpenMovie
                 )
 
@@ -214,7 +259,15 @@ private fun VaultScaffold(
                     tags = state.tags,
                     pendingImportCount = state.pendingImportCount,
                     pendingImportMode = state.pendingImportMode,
-                    onStageImages = onStageImages
+                    onStageImages = onStageImages,
+                    onImagesImported = onImagesImported,
+                    onUpdateNotes = onUpdateMovieNotes,
+                    onToggleFavorite = onToggleFavorite,
+                    onAddLink = onAddLink,
+                    onDeleteLink = onDeleteLink,
+                    onAssignTag = onAssignTag,
+                    onCreateAndAssignTag = onCreateAndAssignTag,
+                    onRemoveTag = onRemoveTag
                 )
 
                 VaultTab.Settings -> SettingsScreen()
@@ -431,8 +484,11 @@ private fun LibraryDetailScreen(
     library: VaultLibrary?,
     movies: List<VaultMovie>,
     tags: List<MovieTag>,
+    onAddMovie: (String, String) -> Unit,
     onOpenMovie: (String) -> Unit
 ) {
+    var showAddMovieDialog by remember { mutableStateOf(false) }
+
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -445,7 +501,7 @@ private fun LibraryDetailScreen(
         }
         item {
             OutlinedButton(
-                onClick = {},
+                onClick = { showAddMovieDialog = true },
                 modifier = Modifier.height(48.dp)
             ) {
                 Text("添加影片")
@@ -461,6 +517,52 @@ private fun LibraryDetailScreen(
             }
         }
     }
+
+    if (showAddMovieDialog && library != null) {
+        MovieTitleDialog(
+            onDismiss = { showAddMovieDialog = false },
+            onConfirm = { title ->
+                onAddMovie(library.id, title)
+                showAddMovieDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun MovieTitleDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    val trimmedTitle = title.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加影片") },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("片名") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = trimmedTitle.isNotEmpty(),
+                onClick = { onConfirm(trimmedTitle) }
+            ) {
+                Text("创建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable
@@ -469,7 +571,15 @@ private fun MovieDetailScreen(
     tags: List<MovieTag>,
     pendingImportCount: Int,
     pendingImportMode: ImportMode?,
-    onStageImages: (ImportMode) -> Unit
+    onStageImages: (Int, ImportMode) -> Unit,
+    onImagesImported: (String, List<ImportedVaultMedia>, ImportMode, Boolean) -> Unit,
+    onUpdateNotes: (String, String) -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onAddLink: (String, String, LinkType) -> Unit,
+    onDeleteLink: (String) -> Unit,
+    onAssignTag: (String, String) -> Unit,
+    onCreateAndAssignTag: (String, String) -> Unit,
+    onRemoveTag: (String, String) -> Unit
 ) {
     if (movie == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -479,19 +589,109 @@ private fun MovieDetailScreen(
     }
 
     val movieTags = tags.filter { it.id in movie.tagIds }
+    val availableTags = tags.filter { it.id !in movie.tagIds }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val importer = remember(context) { PrivateMediaImporter(context) }
+    val removalGateway = remember(context) { MediaStoreOriginalRemovalGateway(context) }
+    var requestedImportMode by remember { mutableStateOf<ImportMode?>(null) }
+    var pendingDeleteUris by remember { mutableStateOf(emptyList<Uri>()) }
+    var pendingCopiedMedia by remember { mutableStateOf(emptyList<ImportedVaultMedia>()) }
+    var importErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    // ── Editable state ──
+    var editingNotes by remember(movie.id) { mutableStateOf(false) }
+    var draftNotes by remember(movie.id, movie.notes) { mutableStateOf(movie.notes) }
+    var showAddLinkDialog by remember { mutableStateOf(false) }
+    var showAddTagDialog by remember { mutableStateOf(false) }
+
+    // ── Delete originals launcher ──
+    val deleteOriginalsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val originalRemoved = result.resultCode == Activity.RESULT_OK
+        val mode = requestedImportMode ?: ImportMode.MoveAndHideOriginal
+        if (pendingCopiedMedia.isNotEmpty()) {
+            onImagesImported(movie.id, pendingCopiedMedia, mode, originalRemoved)
+        }
+        if (!originalRemoved) {
+            importErrorMessage = "已保存副本，但系统未移除相册原图；原图仍可能在相册和微信图片选择器中显示。"
+        }
+        pendingCopiedMedia = emptyList()
+        pendingDeleteUris = emptyList()
+        requestedImportMode = null
+    }
+
+    val mediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20)
+    ) { uris ->
+        val mode = requestedImportMode ?: return@rememberLauncherForActivityResult
+        if (uris.isEmpty()) {
+            requestedImportMode = null
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            importErrorMessage = null
+            runCatching {
+                val copiedMedia = uris.map { uri -> importer.copyToPrivateStorage(uri) }
+                if (mode == ImportMode.MoveAndHideOriginal) {
+                    val deleteRequest = removalGateway.createDeleteRequest(uris)
+                    if (deleteRequest == null) {
+                        onImagesImported(movie.id, copiedMedia, mode, false)
+                        importErrorMessage = "已保存副本，但系统未允许按当前来源移除原图；原图仍可能在相册和微信图片选择器中显示。"
+                        requestedImportMode = null
+                    } else {
+                        pendingDeleteUris = uris
+                        pendingCopiedMedia = copiedMedia
+                        deleteOriginalsLauncher.launch(
+                            IntentSenderRequest.Builder(deleteRequest.intentSender).build()
+                        )
+                    }
+                } else {
+                    onImagesImported(movie.id, copiedMedia, mode, false)
+                    requestedImportMode = null
+                }
+            }.onFailure { error ->
+                importErrorMessage = "导入失败：${error.localizedMessage ?: "无法读取所选媒体"}"
+                pendingCopiedMedia = emptyList()
+                pendingDeleteUris = emptyList()
+                requestedImportMode = null
+            }
+        }
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // ── Title + Favorite ──
         item {
-            Text(text = movie.title, style = MaterialTheme.typography.headlineSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = movie.title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { onToggleFavorite(movie.id) }) {
+                    Icon(
+                        imageVector = if (movie.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = if (movie.isFavorite) "取消收藏" else "加入收藏",
+                        tint = if (movie.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                    )
+                }
+            }
             Text(
                 text = "封面图使用第一张详情图",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
             )
         }
+
+        // ── Image summary + picker ──
         item {
             DetailImageSummary(movie = movie)
         }
@@ -499,19 +699,325 @@ private fun MovieDetailScreen(
             ImageImportChoiceCard(
                 pendingImportCount = pendingImportCount,
                 pendingImportMode = pendingImportMode,
-                onStageImages = onStageImages
+                pendingDeleteCount = pendingDeleteUris.size,
+                importErrorMessage = importErrorMessage,
+                onPickImages = { mode ->
+                    requestedImportMode = mode
+                    importErrorMessage = null
+                    mediaPickerLauncher.launch(
+                        PickVisualMediaRequest(PickVisualMedia.ImageAndVideo)
+                    )
+                }
             )
         }
+
+        // ── Editable Notes ──
         item {
-            MetadataCard(title = "网盘地址", lines = movie.links.map { "${it.type.label()}  ${it.url}" })
+            Card {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "备注", style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = {
+                            if (editingNotes) {
+                                onUpdateNotes(movie.id, draftNotes)
+                            } else {
+                                draftNotes = movie.notes
+                            }
+                            editingNotes = !editingNotes
+                        }) {
+                            Icon(
+                                imageVector = if (editingNotes) Icons.Default.Check else Icons.Default.Edit,
+                                contentDescription = if (editingNotes) "保存备注" else "编辑备注"
+                            )
+                        }
+                    }
+                    if (editingNotes) {
+                        OutlinedTextField(
+                            value = draftNotes,
+                            onValueChange = { draftNotes = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            maxLines = 6,
+                            placeholder = { Text("输入备注内容…") }
+                        )
+                    } else {
+                        Text(
+                            text = movie.notes.ifEmpty { "暂无备注" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(
+                                alpha = if (movie.notes.isEmpty()) 0.54f else 1f
+                            )
+                        )
+                    }
+                }
+            }
         }
+
+        // ── Editable Links ──
         item {
-            MetadataCard(title = "备注", lines = listOf(movie.notes))
+            Card {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "网盘地址", style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = { showAddLinkDialog = true }) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "添加链接")
+                        }
+                    }
+                    if (movie.links.isEmpty()) {
+                        Text(
+                            text = "暂无链接",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                        )
+                    } else {
+                        movie.links.forEach { link ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = link.url,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Text(
+                                        text = link.type.label(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                IconButton(onClick = { onDeleteLink(link.id) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "删除链接",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        // ── Editable Tags ──
         item {
-            MetadataCard(title = "标签", lines = movieTags.map { it.name }.ifEmpty { listOf("未添加标签") })
+            Card {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "标签", style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = { showAddTagDialog = true }) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = "添加标签")
+                        }
+                    }
+                    if (movieTags.isEmpty()) {
+                        Text(
+                            text = "未添加标签",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+                        )
+                    } else {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            movieTags.forEach { tag ->
+                                InputChip(
+                                    selected = false,
+                                    onClick = { },
+                                    label = { Text(tag.name) },
+                                    trailingIcon = {
+                                        IconButton(onClick = { onRemoveTag(movie.id, tag.id) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "移除标签 ${tag.name}",
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
+
+    // ── Add Link Dialog ──
+    if (showAddLinkDialog) {
+        AddLinkDialog(
+            onDismiss = { showAddLinkDialog = false },
+            onConfirm = { url, type ->
+                onAddLink(movie.id, url, type)
+                showAddLinkDialog = false
+            }
+        )
+    }
+
+    // ── Add Tag Dialog ──
+    if (showAddTagDialog) {
+        AddTagDialog(
+            availableTags = availableTags,
+            onDismiss = { showAddTagDialog = false },
+            onSelectExisting = { tagId ->
+                onAssignTag(movie.id, tagId)
+                showAddTagDialog = false
+            },
+            onCreateNew = { name ->
+                onCreateAndAssignTag(movie.id, name)
+                showAddTagDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddLinkDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (url: String, type: LinkType) -> Unit
+) {
+    var url by remember { mutableStateOf("") }
+    var selectedType by remember { mutableStateOf(LinkType.Web) }
+    var typeMenuExpanded by remember { mutableStateOf(false) }
+    val trimmedUrl = url.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加网盘链接") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("链接地址") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Box {
+                    OutlinedButton(
+                        onClick = { typeMenuExpanded = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("类型：${selectedType.label()}")
+                    }
+                    DropdownMenu(
+                        expanded = typeMenuExpanded,
+                        onDismissRequest = { typeMenuExpanded = false }
+                    ) {
+                        LinkType.entries.forEach { type ->
+                            DropdownMenuItem(
+                                text = { Text(type.label()) },
+                                onClick = {
+                                    selectedType = type
+                                    typeMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = trimmedUrl.isNotEmpty(),
+                onClick = { onConfirm(trimmedUrl, selectedType) }
+            ) {
+                Text("添加")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun AddTagDialog(
+    availableTags: List<MovieTag>,
+    onDismiss: () -> Unit,
+    onSelectExisting: (String) -> Unit,
+    onCreateNew: (String) -> Unit
+) {
+    var newTagName by remember { mutableStateOf("") }
+    val trimmedName = newTagName.trim()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加标签") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (availableTags.isNotEmpty()) {
+                    Text(
+                        text = "已有标签",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f)
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        availableTags.forEach { tag ->
+                            AssistChip(
+                                onClick = { onSelectExisting(tag.id) },
+                                label = { Text(tag.name) }
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = newTagName,
+                    onValueChange = { newTagName = it },
+                    label = { Text("新标签名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = trimmedName.isNotEmpty(),
+                onClick = { onCreateNew(trimmedName) }
+            ) {
+                Text("新建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
 
 @Composable
@@ -605,7 +1111,7 @@ private fun MovieRow(movie: VaultMovie, tags: List<MovieTag>, onClick: () -> Uni
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CoverPlaceholder()
+            MovieCoverImage(coverImage = movie.coverImage)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(text = movie.title, style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -619,16 +1125,32 @@ private fun MovieRow(movie: VaultMovie, tags: List<MovieTag>, onClick: () -> Uni
 }
 
 @Composable
-private fun CoverPlaceholder() {
+private fun MovieCoverImage(coverImage: MovieImage?) {
+    val localPath = coverImage?.localPath
     Card(modifier = Modifier.size(width = 64.dp, height = 84.dp)) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+        if (localPath != null) {
+            AsyncImage(
+                model = localPath,
+                contentDescription = "封面图",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+            }
         }
     }
 }
 
 @Composable
 private fun DetailImageSummary(movie: VaultMovie) {
+    val movedAndHiddenCount = movie.detailImages.count {
+        it.importMode == ImportMode.MoveAndHideOriginal && it.originalRemoved
+    }
+    val movedButStillVisibleCount = movie.detailImages.count {
+        it.importMode == ImportMode.MoveAndHideOriginal && !it.originalRemoved && it.originalUri != null
+    }
+
     Card {
         Column(
             modifier = Modifier
@@ -638,6 +1160,46 @@ private fun DetailImageSummary(movie: VaultMovie) {
         ) {
             Text(text = "详情图", style = MaterialTheme.typography.titleMedium)
             Text(text = "共 ${movie.detailImages.size} 张。第一张作为封面图。")
+            when {
+                movedButStillVisibleCount > 0 -> {
+                    Text(
+                        text = "有 $movedButStillVisibleCount 项已复制到私密目录，但原图仍可能在相册、微信等入口可见。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                movedAndHiddenCount > 0 -> {
+                    Text(
+                        text = "已迁移 $movedAndHiddenCount 项，系统已确认移除原图。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+            if (movie.detailImages.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    movie.detailImages.take(4).forEach { image ->
+                        val path = image.localPath
+                        Card(modifier = Modifier.size(width = 72.dp, height = 96.dp)) {
+                            if (path != null) {
+                                AsyncImage(
+                                    model = path,
+                                    contentDescription = "详情图",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -646,7 +1208,9 @@ private fun DetailImageSummary(movie: VaultMovie) {
 private fun ImageImportChoiceCard(
     pendingImportCount: Int,
     pendingImportMode: ImportMode?,
-    onStageImages: (ImportMode) -> Unit
+    pendingDeleteCount: Int,
+    importErrorMessage: String?,
+    onPickImages: (ImportMode) -> Unit
 ) {
     Card {
         Column(
@@ -658,6 +1222,19 @@ private fun ImageImportChoiceCard(
             Text(text = "添加详情图", style = MaterialTheme.typography.titleMedium)
             Text(text = "可从系统相册复制或迁移。迁移会在复制成功后请求移除相册原图。")
             AssistChip(onClick = {}, label = { Text("已选择：$pendingImportCount") })
+            if (pendingDeleteCount > 0) {
+                Text(
+                    text = "等待系统确认移除原图：$pendingDeleteCount 项",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            importErrorMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             pendingImportMode?.let { mode ->
                 Text(
                     text = when (mode) {
@@ -668,7 +1245,7 @@ private fun ImageImportChoiceCard(
                 )
             }
             Button(
-                onClick = { onStageImages(ImportMode.MoveAndHideOriginal) },
+                onClick = { onPickImages(ImportMode.MoveAndHideOriginal) },
                 modifier = Modifier.height(48.dp)
             ) {
                 Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
@@ -676,7 +1253,7 @@ private fun ImageImportChoiceCard(
                 Text("迁移/剪切图片")
             }
             OutlinedButton(
-                onClick = { onStageImages(ImportMode.CopyOnly) },
+                onClick = { onPickImages(ImportMode.CopyOnly) },
                 modifier = Modifier.height(48.dp)
             ) {
                 Text("复制图片")
