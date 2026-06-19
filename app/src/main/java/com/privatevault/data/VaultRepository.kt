@@ -3,6 +3,7 @@ package com.privatevault.data
 import com.privatevault.core.ImportMode
 import com.privatevault.core.LinkType
 import com.privatevault.core.VaultAppState
+import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -69,6 +70,7 @@ class VaultRepository(
         movieId: String,
         privatePath: String,
         originalUri: String?,
+        mimeType: String?,
         importMode: ImportMode,
         originalRemoved: Boolean
     ) {
@@ -80,12 +82,20 @@ class VaultRepository(
                 movieId = movieId,
                 privatePath = privatePath,
                 originalUri = originalUri,
+                mimeType = mimeType,
                 importMode = importMode,
                 originalRemoved = originalRemoved,
                 sortOrder = nextNumber - 1,
                 createdAt = clock()
             )
         )
+    }
+
+    suspend fun deleteMovieImage(imageId: String) {
+        val snapshot = store.observeSnapshot().first()
+        val image = snapshot.images.firstOrNull { it.id == imageId } ?: return
+        store.deleteMovieImage(imageId)
+        runCatching { File(image.privatePath).delete() }
     }
 
     // ── Movie update operations ──

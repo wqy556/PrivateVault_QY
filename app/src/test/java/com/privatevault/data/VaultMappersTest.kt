@@ -33,6 +33,7 @@ class VaultMappersTest {
                     movieId = "movie-1",
                     privatePath = "/vault/image-1.jpg",
                     originalUri = "content://media/image/1",
+                    mimeType = "image/jpeg",
                     importMode = ImportMode.MoveAndHideOriginal,
                     originalRemoved = false,
                     sortOrder = 0,

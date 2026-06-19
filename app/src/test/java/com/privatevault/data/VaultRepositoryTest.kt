@@ -46,6 +46,7 @@ class VaultRepositoryTest {
             movieId = "movie-1",
             privatePath = "/vault/private.jpg",
             originalUri = "content://media/image/1",
+            mimeType = "image/jpeg",
             importMode = ImportMode.MoveAndHideOriginal,
             originalRemoved = true
         )
@@ -54,6 +55,7 @@ class VaultRepositoryTest {
         assertEquals("/vault/private.jpg", state.movies.single().coverImage?.localPath)
         assertEquals(ImportMode.MoveAndHideOriginal, state.movies.single().coverImage?.importMode)
         assertEquals("content://media/image/1", state.movies.single().coverImage?.originalUri)
+        assertEquals("image/jpeg", state.movies.single().coverImage?.mimeType)
         assertEquals(true, state.movies.single().coverImage?.originalRemoved)
     }
 
@@ -100,6 +102,52 @@ class VaultRepositoryTest {
 
         assertEquals("新标题", state.movies.single().title)
     }
+
+    @Test
+    fun deleteMovieImageRemovesOnlyTheSelectedImage() = runTest {
+        val store = FakeVaultStore(
+            VaultSnapshot(
+                libraries = listOf(LibraryEntity("library-main", "片库", 0, 1L, 1L)),
+                movies = listOf(
+                    MovieEntity("movie-1", "library-main", "影片", "", false, 0L, 1L, 1L)
+                ),
+                images = listOf(
+                    MovieImageEntity(
+                        id = "image-1",
+                        movieId = "movie-1",
+                        privatePath = "/vault/private-1.jpg",
+                        originalUri = null,
+                        mimeType = "image/jpeg",
+                        importMode = ImportMode.CopyOnly,
+                        originalRemoved = false,
+                        sortOrder = 0,
+                        createdAt = 1L
+                    ),
+                    MovieImageEntity(
+                        id = "image-2",
+                        movieId = "movie-1",
+                        privatePath = "/vault/private-2.mp4",
+                        originalUri = null,
+                        mimeType = "video/mp4",
+                        importMode = ImportMode.CopyOnly,
+                        originalRemoved = false,
+                        sortOrder = 1,
+                        createdAt = 2L
+                    )
+                ),
+                links = emptyList(),
+                tags = emptyList(),
+                movieTags = emptyList()
+            )
+        )
+        val repository = VaultRepository(store)
+
+        repository.deleteMovieImage("image-1")
+        val state = repository.state.first()
+
+        assertEquals(listOf("image-2"), state.movies.single().detailImages.map { it.id })
+        assertEquals("video/mp4", state.movies.single().coverImage?.mimeType)
+    }
 }
 
 private fun sequenceIds(vararg ids: String): () -> String {
@@ -138,6 +186,11 @@ private class FakeVaultStore(initialSnapshot: VaultSnapshot) : VaultStore {
     override suspend fun updateMovieNotes(movieId: String, notes: String, updatedAt: Long) = Unit
     override suspend fun updateMovieFavorite(movieId: String, isFavorite: Boolean, updatedAt: Long) = Unit
     override suspend fun updateMovieLastOpenedAt(movieId: String, lastOpenedAt: Long) = Unit
+    override suspend fun deleteMovieImage(imageId: String) {
+        snapshots.value = snapshots.value.copy(
+            images = snapshots.value.images.filterNot { it.id == imageId }
+        )
+    }
     override suspend fun insertLink(link: MovieLinkEntity) = Unit
     override suspend fun deleteLink(linkId: String) = Unit
     override suspend fun upsertTag(tag: TagEntity) = Unit

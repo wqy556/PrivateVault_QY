@@ -71,6 +71,8 @@ data class MovieImageEntity(
     val privatePath: String,
     @ColumnInfo(name = "original_uri")
     val originalUri: String?,
+    @ColumnInfo(name = "mime_type")
+    val mimeType: String?,
     @ColumnInfo(name = "import_mode")
     val importMode: ImportMode,
     @ColumnInfo(name = "original_removed")

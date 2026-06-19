@@ -41,6 +41,9 @@ interface VaultDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMovieImage(image: MovieImageEntity)
 
+    @Query("DELETE FROM movie_images WHERE id = :imageId")
+    suspend fun deleteMovieImage(imageId: String)
+
     // ── Movie update operations ──
 
     @Query("UPDATE movies SET title = :title, updated_at = :updatedAt WHERE id = :movieId")

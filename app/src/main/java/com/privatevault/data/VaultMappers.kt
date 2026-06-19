@@ -42,6 +42,7 @@ fun VaultSnapshot.toVaultAppState(isLocked: Boolean): VaultAppState {
                     MovieImage(
                         id = image.id,
                         localPath = image.privatePath,
+                        mimeType = image.mimeType,
                         importMode = image.importMode,
                         originalUri = image.originalUri,
                         originalRemoved = image.originalRemoved

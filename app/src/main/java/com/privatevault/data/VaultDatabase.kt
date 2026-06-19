@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.privatevault.core.ImportMode
 import com.privatevault.core.LinkType
 
@@ -18,7 +20,7 @@ import com.privatevault.core.LinkType
         TagEntity::class,
         MovieTagCrossRef::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(VaultTypeConverters::class)
@@ -31,7 +33,15 @@ abstract class VaultDatabase : RoomDatabase() {
                 context.applicationContext,
                 VaultDatabase::class.java,
                 "private_vault.db"
-            ).build()
+            )
+                .addMigrations(MIGRATION_1_2)
+                .build()
+        }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE movie_images ADD COLUMN mime_type TEXT")
+            }
         }
     }
 }

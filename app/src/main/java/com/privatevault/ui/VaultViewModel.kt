@@ -128,11 +128,16 @@ class VaultViewModel(private val repository: VaultRepository) : ViewModel() {
                     movieId = movieId,
                     privatePath = media.privatePath,
                     originalUri = media.originalUri,
+                    mimeType = media.mimeType,
                     importMode = importMode,
                     originalRemoved = originalRemoved
                 )
             }
         }
+    }
+
+    fun deleteMovieImage(imageId: String) {
+        viewModelScope.launch { repository.deleteMovieImage(imageId) }
     }
 
     // ── Links ──
@@ -171,7 +176,8 @@ class VaultViewModel(private val repository: VaultRepository) : ViewModel() {
 
 data class ImportedVaultMedia(
     val privatePath: String,
-    val originalUri: String?
+    val originalUri: String?,
+    val mimeType: String?
 )
 
 private data class VaultTransientState(

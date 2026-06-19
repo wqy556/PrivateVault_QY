@@ -15,6 +15,8 @@ interface VaultStore {
 
     suspend fun insertMovieImage(image: MovieImageEntity)
 
+    suspend fun deleteMovieImage(imageId: String)
+
     // ── Movie update operations ──
 
     suspend fun updateMovieTitle(movieId: String, title: String, updatedAt: Long)

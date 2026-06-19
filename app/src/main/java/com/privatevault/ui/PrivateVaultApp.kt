@@ -1,16 +1,24 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class
+)
 
 package com.privatevault.ui
 
 import android.app.Activity
 import android.net.Uri
+import android.view.ViewGroup
+import android.widget.MediaController
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +33,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
@@ -40,6 +50,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -67,12 +78,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,6 +104,7 @@ import com.privatevault.data.VaultRepository
 import com.privatevault.media.MediaStoreOriginalRemovalGateway
 import com.privatevault.media.PrivateMediaImporter
 import coil.compose.AsyncImage
+import java.io.File
 import kotlinx.coroutines.launch
 
 @Composable
@@ -141,6 +157,7 @@ fun PrivateVaultApp(repository: VaultRepository) {
                 onOpenMovie = { navigate(state.openMovie(it)) },
                 onStageImages = viewModel::stageImageSelection,
                 onImagesImported = viewModel::addMovieImages,
+                onDeleteMovieImage = viewModel::deleteMovieImage,
                 onUpdateMovieTitle = viewModel::updateMovieTitle,
                 onUpdateMovieNotes = viewModel::updateMovieNotes,
                 onToggleFavorite = viewModel::toggleFavorite,
@@ -213,6 +230,7 @@ private fun VaultScaffold(
     onOpenMovie: (String) -> Unit,
     onStageImages: (Int, ImportMode) -> Unit,
     onImagesImported: (String, List<ImportedVaultMedia>, ImportMode, Boolean) -> Unit,
+    onDeleteMovieImage: (String) -> Unit,
     onUpdateMovieTitle: (String, String) -> Unit,
     onUpdateMovieNotes: (String, String) -> Unit,
     onToggleFavorite: (String) -> Unit,
@@ -267,6 +285,7 @@ private fun VaultScaffold(
                     pendingImportMode = state.pendingImportMode,
                     onStageImages = onStageImages,
                     onImagesImported = onImagesImported,
+                    onDeleteImage = onDeleteMovieImage,
                     onUpdateTitle = onUpdateMovieTitle,
                     onUpdateNotes = onUpdateMovieNotes,
                     onToggleFavorite = onToggleFavorite,
@@ -580,6 +599,7 @@ private fun MovieDetailScreen(
     pendingImportMode: ImportMode?,
     onStageImages: (Int, ImportMode) -> Unit,
     onImagesImported: (String, List<ImportedVaultMedia>, ImportMode, Boolean) -> Unit,
+    onDeleteImage: (String) -> Unit,
     onUpdateTitle: (String, String) -> Unit,
     onUpdateNotes: (String, String) -> Unit,
     onToggleFavorite: (String) -> Unit,
@@ -607,6 +627,7 @@ private fun MovieDetailScreen(
     var pendingDeleteUris by remember { mutableStateOf(emptyList<Uri>()) }
     var pendingCopiedMedia by remember { mutableStateOf(emptyList<ImportedVaultMedia>()) }
     var importErrorMessage by remember { mutableStateOf<String?>(null) }
+    var previewStartIndex by remember(movie.id) { mutableStateOf<Int?>(null) }
 
     // ── Editable state ──
     var editingTitle by remember(movie.id) { mutableStateOf(false) }
@@ -746,7 +767,11 @@ private fun MovieDetailScreen(
 
         // ── Image summary + picker ──
         item {
-            DetailImageSummary(movie = movie)
+            DetailImageSummary(
+                movie = movie,
+                onOpenImage = { index -> previewStartIndex = index },
+                onDeleteImage = onDeleteImage
+            )
         }
         item {
             ImageImportChoiceCard(
@@ -964,6 +989,26 @@ private fun MovieDetailScreen(
                 showAddTagDialog = false
             }
         )
+    }
+
+    previewStartIndex?.let { startIndex ->
+        if (movie.detailImages.isNotEmpty()) {
+            MediaPreviewDialog(
+                images = movie.detailImages,
+                initialPage = startIndex.coerceIn(0, movie.detailImages.lastIndex),
+                onDismiss = { previewStartIndex = null },
+                onDeleteImage = { image, page ->
+                    onDeleteImage(image.id)
+                    previewStartIndex = if (movie.detailImages.size <= 1) {
+                        null
+                    } else {
+                        page.coerceAtMost(movie.detailImages.lastIndex - 1)
+                    }
+                }
+            )
+        } else {
+            previewStartIndex = null
+        }
     }
 }
 
@@ -1193,24 +1238,21 @@ private fun MovieRow(movie: VaultMovie, tags: List<MovieTag>, onClick: () -> Uni
 
 @Composable
 private fun MovieCoverImage(coverImage: MovieImage?) {
-    val localPath = coverImage?.localPath
     Card(modifier = Modifier.size(width = 64.dp, height = 84.dp)) {
-        if (localPath != null) {
-            AsyncImage(
-                model = localPath,
-                contentDescription = "封面图",
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
-            }
-        }
+        MediaThumbnail(
+            image = coverImage,
+            contentDescription = "封面图",
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
 @Composable
-private fun DetailImageSummary(movie: VaultMovie) {
+private fun DetailImageSummary(
+    movie: VaultMovie,
+    onOpenImage: (Int) -> Unit,
+    onDeleteImage: (String) -> Unit
+) {
     val movedAndHiddenCount = movie.detailImages.count {
         it.importMode == ImportMode.MoveAndHideOriginal && it.originalRemoved
     }
@@ -1249,18 +1291,28 @@ private fun DetailImageSummary(movie: VaultMovie) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    movie.detailImages.take(4).forEach { image ->
-                        val path = image.localPath
-                        Card(modifier = Modifier.size(width = 72.dp, height = 96.dp)) {
-                            if (path != null) {
-                                AsyncImage(
-                                    model = path,
-                                    contentDescription = "详情图",
+                    movie.detailImages.take(4).forEachIndexed { index, image ->
+                        Card(
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 96.dp)
+                                .clickable { onOpenImage(index) }
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                MediaThumbnail(
+                                    image = image,
+                                    contentDescription = "打开详情媒体",
                                     modifier = Modifier.fillMaxSize()
                                 )
-                            } else {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+                                IconButton(
+                                    onClick = { onDeleteImage(image.id) },
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "删除详情媒体",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
@@ -1269,6 +1321,164 @@ private fun DetailImageSummary(movie: VaultMovie) {
             }
         }
     }
+}
+
+@Composable
+private fun MediaThumbnail(
+    image: MovieImage?,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    val path = image?.localPath
+    when {
+        path == null -> {
+            Box(modifier = modifier, contentAlignment = Alignment.Center) {
+                Icon(imageVector = Icons.Default.UploadFile, contentDescription = null)
+            }
+        }
+
+        image.isVideoMedia() -> {
+            Box(
+                modifier = modifier.background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = contentDescription,
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+
+        else -> {
+            AsyncImage(
+                model = path,
+                contentDescription = contentDescription,
+                modifier = modifier
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaPreviewDialog(
+    images: List<MovieImage>,
+    initialPage: Int,
+    onDismiss: () -> Unit,
+    onDeleteImage: (MovieImage, Int) -> Unit
+) {
+    val pagerState = rememberPagerState(initialPage = initialPage) { images.size }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val image = images[page]
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    val path = image.localPath
+                    when {
+                        path == null -> {
+                            Text(
+                                text = "文件不存在",
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+
+                        image.isVideoMedia() -> {
+                            VideoPreview(path = path, modifier = Modifier.fillMaxSize())
+                        }
+
+                        else -> {
+                            AsyncImage(
+                                model = path,
+                                contentDescription = "详情图预览",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${pagerState.currentPage + 1} / ${images.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Row {
+                    IconButton(onClick = {
+                        onDeleteImage(images[pagerState.currentPage], pagerState.currentPage)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "删除当前媒体",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭预览",
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoPreview(path: String, modifier: Modifier = Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            VideoView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setMediaController(MediaController(context).also { controller ->
+                    controller.setAnchorView(this)
+                })
+                setVideoURI(Uri.fromFile(File(path)))
+                setOnPreparedListener { mediaPlayer ->
+                    mediaPlayer.isLooping = false
+                    start()
+                }
+            }
+        }
+    )
+}
+
+private fun MovieImage?.isVideoMedia(): Boolean {
+    val path = this?.localPath?.lowercase().orEmpty()
+    val mimeType = this?.mimeType?.lowercase().orEmpty()
+    return mimeType.startsWith("video/") ||
+        path.endsWith(".mp4") ||
+        path.endsWith(".mkv") ||
+        path.endsWith(".webm") ||
+        path.endsWith(".3gp") ||
+        path.endsWith(".mov")
 }
 
 @Composable

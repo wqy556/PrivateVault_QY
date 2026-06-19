@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
 class PrivateMediaImporter(private val context: Context) {
     suspend fun copyToPrivateStorage(uri: Uri): ImportedVaultMedia = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
-        val extension = resolver.getType(uri)
+        val mimeType = resolver.getType(uri)
+        val extension = mimeType
             ?.let { mimeType -> MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) }
             ?.takeIf { it.isNotBlank() }
             ?: "bin"
@@ -28,7 +29,8 @@ class PrivateMediaImporter(private val context: Context) {
 
         ImportedVaultMedia(
             privatePath = targetFile.absolutePath,
-            originalUri = uri.toString()
+            originalUri = uri.toString(),
+            mimeType = mimeType
         )
     }
 }
