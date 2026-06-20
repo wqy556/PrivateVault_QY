@@ -1258,6 +1258,25 @@ private fun SettingsScreen() {
         MetadataCard(title = "系统应用锁", lines = listOf("本应用不内置 PIN。请在系统设置中启用应用锁、隐私锁或生物识别保护。"))
         MetadataCard(title = "安全边界", lines = listOf("当前版本使用 App 私有目录，不承诺文件级加密。"))
         MetadataCard(title = "截图", lines = listOf("后续可通过窗口安全标记禁止系统截图。"))
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "PrivateVault",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f)
+            )
+            Text(
+                text = "作者 秋漾",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            )
+        }
     }
 }
 
